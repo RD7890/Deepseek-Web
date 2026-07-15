@@ -1,6 +1,7 @@
 package com.rohan.deepseek.viewmodel
 
 import android.app.Application
+import android.webkit.WebView
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.rohan.deepseek.cache.CacheDatabase
@@ -18,6 +19,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val db  = CacheDatabase.getInstance(application)
     private val dao = db.cacheDao()
     val cacheManager = CacheManager(application)
+
+    /** Kept alive across navigation — prevents WebView reload when returning to Chat tab. */
+    var webView: WebView? = null
 
     val cacheEntries: StateFlow<List<CacheEntry>> = dao.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -48,5 +52,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onRefreshConsumed() {
         _triggerRefresh.value = false
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        webView?.destroy()
+        webView = null
     }
 }

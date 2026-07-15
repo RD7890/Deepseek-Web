@@ -20,12 +20,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.WindowInsets
+import androidx.compose.material3.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -33,6 +36,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -54,10 +59,22 @@ sealed class Screen(val route: String, val label: String) {
     object Settings : Screen("settings", "Settings")
 }
 
-// Glass constants — neutral, not blue
-private val GlassBg     = Color(0xCC0A0D18)
-private val GlassBorder = Color(0x28FFFFFF)
-private val GlassSelected = Color(0x33FFFFFF)
+// ── Glass design tokens ──────────────────────────────────────────────────────
+// Semi-transparent dark background — gradient makes it look like frosted glass
+private val GlassBrush = Brush.verticalGradient(
+    colors = listOf(
+        Color(0xC81E2235), // top — slightly lighter, blue-tinted
+        Color(0xD00A0D18)  // bottom — deeper dark
+    )
+)
+// Subtle highlight at top edge, mimics light catching the glass rim
+private val GlassHighlightBrush = Brush.verticalGradient(
+    colors = listOf(Color(0x40FFFFFF), Color(0x00FFFFFF))
+)
+private val GlassBorder    = Color(0x33FFFFFF)
+private val GlassSelected  = Color(0x28FFFFFF)
+private val IconSelected   = Color(0xFFFFFFFF)
+private val IconUnselected = Color(0x66FFFFFF)
 
 @Composable
 fun AppNavigation(vm: AppViewModel = viewModel()) {
@@ -65,53 +82,83 @@ fun AppNavigation(vm: AppViewModel = viewModel()) {
     val navBackStack  by navController.currentBackStackEntryAsState()
     val currentDest   = navBackStack?.destination
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    // ── Root layout: Column so nav pill NEVER overlaps content ──────────────
+    Column(modifier = Modifier.fillMaxSize()) {
 
-        // Full-screen NavHost — content sits behind the floating bar
-        NavHost(
-            navController    = navController,
-            startDestination = Screen.Home.route,
-            modifier         = Modifier.fillMaxSize(),
-            enterTransition  = { fadeIn(tween(180)) + slideInHorizontally(tween(180)) { it / 6 } },
-            exitTransition   = { fadeOut(tween(180)) + slideOutHorizontally(tween(180)) { -it / 6 } },
-            popEnterTransition  = { fadeIn(tween(180)) + slideInHorizontally(tween(180)) { -it / 6 } },
-            popExitTransition   = { fadeOut(tween(180)) + slideOutHorizontally(tween(180)) { it / 6 } }
-        ) {
-            composable(Screen.Home.route)     { HomeScreen(vm) }
-            composable(Screen.Settings.route) { SettingsScreen(vm) }
-        }
-
-        // Floating glass pill nav bar
+        // ── Content area — pushes down below status bar / notch ─────────────
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(horizontal = 36.dp, vertical = 14.dp)
-                .fillMaxWidth()
-                .height(52.dp)
-                .clip(RoundedCornerShape(50))
-                .background(GlassBg)
-                .border(0.8.dp, GlassBorder, RoundedCornerShape(50))
+                .weight(1f)
+                .windowInsetsPadding(WindowInsets.statusBars)
         ) {
-            Row(
-                modifier              = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment     = Alignment.CenterVertically
+            NavHost(
+                navController    = navController,
+                startDestination = Screen.Home.route,
+                modifier         = Modifier.fillMaxSize(),
+                enterTransition  = { fadeIn(tween(200)) + slideInHorizontally(tween(200)) { it / 8 } },
+                exitTransition   = { fadeOut(tween(200)) + slideOutHorizontally(tween(200)) { -it / 8 } },
+                popEnterTransition  = { fadeIn(tween(200)) + slideInHorizontally(tween(200)) { -it / 8 } },
+                popExitTransition   = { fadeOut(tween(200)) + slideOutHorizontally(tween(200)) { it / 8 } }
             ) {
-                listOf(Screen.Home, Screen.Settings).forEach { screen ->
-                    val selected = currentDest?.hierarchy?.any { it.route == screen.route } == true
-                    GlassNavItem(
-                        icon     = if (screen == Screen.Home) Icons.Filled.Chat else Icons.Filled.Settings,
-                        label    = screen.label,
-                        selected = selected,
-                        onClick  = {
-                            navController.navigate(screen.route) {
-                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                                launchSingleTop = true
-                                restoreState    = true
-                            }
-                        }
+                composable(Screen.Home.route)     { HomeScreen(vm) }
+                composable(Screen.Settings.route) { SettingsScreen(vm) }
+            }
+        }
+
+        // ── Glass pill nav bar — lives BELOW content in layout flow ──────────
+        //    navigationBarsPadding() adds space for the system nav bar beneath the pill
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 32.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            // Outer shadow layer gives depth and the floating illusion
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(
+                        elevation       = 24.dp,
+                        shape           = RoundedCornerShape(50),
+                        ambientColor    = Color(0x80000000),
+                        spotColor       = Color(0x99000000)
                     )
+                    .clip(RoundedCornerShape(50))
+                    .background(GlassBrush)
+                    .border(0.7.dp, GlassBorder, RoundedCornerShape(50))
+                    .height(54.dp)
+            ) {
+                // Top-edge highlight stripe — light "reflection" on the glass rim
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(GlassHighlightBrush)
+                )
+
+                Row(
+                    modifier              = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment     = Alignment.CenterVertically
+                ) {
+                    listOf(Screen.Home, Screen.Settings).forEach { screen ->
+                        val selected = currentDest?.hierarchy?.any { it.route == screen.route } == true
+                        GlassNavItem(
+                            icon     = if (screen == Screen.Home) Icons.Filled.Chat else Icons.Filled.Settings,
+                            label    = screen.label,
+                            selected = selected,
+                            onClick  = {
+                                navController.navigate(screen.route) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState    = true
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -120,13 +167,20 @@ fun AppNavigation(vm: AppViewModel = viewModel()) {
 
 @Composable
 private fun GlassNavItem(
-    icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit
+    icon: ImageVector,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
 ) {
-    val scale by animateFloatAsState(if (selected) 1.08f else 1f, tween(160), label = "scale")
-    val alpha  = if (selected) 1f else 0.45f
+    val scale by animateFloatAsState(
+        targetValue = if (selected) 1.06f else 1f,
+        animationSpec = tween(160),
+        label = "nav_scale"
+    )
 
     Box(
         modifier = Modifier
+            .scale(scale)
             .clip(RoundedCornerShape(50))
             .then(
                 if (selected) Modifier.background(GlassSelected)
@@ -137,20 +191,19 @@ private fun GlassNavItem(
                 indication        = null,
                 onClick           = onClick
             )
-            .padding(horizontal = 18.dp, vertical = 6.dp)
-            .scale(scale),
+            .padding(horizontal = 24.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
                 imageVector        = icon,
                 contentDescription = label,
-                tint               = Color.White.copy(alpha = alpha),
-                modifier           = Modifier.size(18.dp)
+                tint               = if (selected) IconSelected else IconUnselected,
+                modifier           = Modifier.size(19.dp)
             )
             Text(
                 text       = label,
-                color      = Color.White.copy(alpha = alpha),
+                color      = if (selected) IconSelected else IconUnselected,
                 fontSize   = 9.sp,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 lineHeight = 12.sp

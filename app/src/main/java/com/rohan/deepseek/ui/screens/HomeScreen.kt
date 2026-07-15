@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.view.ViewGroup
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -40,20 +41,20 @@ private const val DEEPSEEK_URL = "https://chat.deepseek.com"
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun HomeScreen(vm: AppViewModel) {
-    val context       = LocalContext.current
-    var webViewRef    by remember { mutableStateOf<WebView?>(null) }
-    var isLoading     by remember { mutableStateOf(true) }
+    val context        = LocalContext.current
     val triggerRefresh by vm.triggerRefresh.collectAsState()
+    // isLoading starts false when returning to a cached WebView (page already loaded)
+    var isLoading by remember { mutableStateOf(vm.webView == null) }
 
     LaunchedEffect(triggerRefresh) {
         if (triggerRefresh) {
-            webViewRef?.reload()
+            vm.webView?.reload()
             vm.onRefreshConsumed()
         }
     }
 
     BackHandler {
-        webViewRef?.let { if (it.canGoBack()) it.goBack() }
+        vm.webView?.let { if (it.canGoBack()) it.goBack() }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -61,67 +62,85 @@ fun HomeScreen(vm: AppViewModel) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory  = { ctx ->
-                WebView(ctx).apply {
-                    layoutParams = ViewGroup.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                    settings.apply {
-                        javaScriptEnabled             = true
-                        domStorageEnabled             = true
-                        databaseEnabled               = true
-                        loadWithOverviewMode          = true
-                        useWideViewPort               = true
-                        builtInZoomControls           = false
-                        displayZoomControls           = false
-                        setSupportMultipleWindows(true)
-                        mixedContentMode              = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                        cacheMode                     = WebSettings.LOAD_CACHE_ELSE_NETWORK
-                        userAgentString               = CacheManager.CHROME_UA
-                        allowContentAccess            = true
-                        allowFileAccess               = true
-                        mediaPlaybackRequiresUserGesture = false
-                    }
-                    webViewClient = object : WebViewClient() {
-                        override fun shouldInterceptRequest(
-                            view: WebView,
-                            request: WebResourceRequest
-                        ): WebResourceResponse? = vm.cacheManager.intercept(request)
+                // Return cached WebView instance — detach from any previous parent first
+                val cached = vm.webView
+                if (cached != null) {
+                    (cached.parent as? ViewGroup)?.removeView(cached)
+                    cached
+                } else {
+                    WebView(ctx).apply {
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT
+                        )
+                        settings.apply {
+                            javaScriptEnabled                = true
+                            domStorageEnabled                = true
+                            databaseEnabled                  = true
+                            loadWithOverviewMode             = true
+                            useWideViewPort                  = true
+                            builtInZoomControls              = false
+                            displayZoomControls              = false
+                            setSupportMultipleWindows(true)
+                            mixedContentMode                 = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                            cacheMode                        = WebSettings.LOAD_CACHE_ELSE_NETWORK
+                            userAgentString                  = CacheManager.CHROME_UA
+                            allowContentAccess               = true
+                            allowFileAccess                  = true
+                            mediaPlaybackRequiresUserGesture = false
 
-                        override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
-                            isLoading = true
-                        }
-
-                        override fun onPageFinished(view: WebView, url: String?) {
-                            isLoading = false
-                        }
-
-                        override fun shouldOverrideUrlLoading(
-                            view: WebView,
-                            request: WebResourceRequest
-                        ): Boolean {
-                            val url = request.url.toString()
-                            return if (url.startsWith("https://chat.deepseek.com") ||
-                                       url.startsWith("https://deepseek.com")) {
-                                false
-                            } else {
-                                runCatching {
-                                    ctx.startActivity(
-                                        Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    )
-                                }
-                                true
+                            // Pass system dark-mode preference to the website so DeepSeek
+                            // picks up the device theme via prefers-color-scheme
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                                @Suppress("DEPRECATION")
+                                forceDark = WebSettings.FORCE_DARK_AUTO
                             }
                         }
-                    }
-                    loadUrl(DEEPSEEK_URL)
-                }.also { webViewRef = it }
+                        loadUrl(DEEPSEEK_URL)
+                    }.also { vm.webView = it }
+                }
             },
-            update = { webViewRef = it }
+            // update runs on every recomposition — install a fresh WebViewClient so
+            // the loading-state callbacks close over the current mutableState refs.
+            update  = { wv ->
+                wv.webViewClient = object : WebViewClient() {
+                    override fun shouldInterceptRequest(
+                        view: WebView,
+                        request: WebResourceRequest
+                    ): WebResourceResponse? = vm.cacheManager.intercept(request)
+
+                    override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                        isLoading = true
+                    }
+
+                    override fun onPageFinished(view: WebView, url: String?) {
+                        isLoading = false
+                    }
+
+                    override fun shouldOverrideUrlLoading(
+                        view: WebView,
+                        request: WebResourceRequest
+                    ): Boolean {
+                        val url = request.url.toString()
+                        return if (url.startsWith("https://chat.deepseek.com") ||
+                                   url.startsWith("https://deepseek.com")) {
+                            false
+                        } else {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            }
+                            true
+                        }
+                    }
+                }
+            }
         )
 
-        // Slim progress bar at top — visible only while loading
+        // Slim 2dp progress bar at top — visible only while loading
         AnimatedVisibility(
             visible  = isLoading,
             enter    = fadeIn(),
@@ -129,11 +148,9 @@ fun HomeScreen(vm: AppViewModel) {
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
             LinearProgressIndicator(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(2.dp),
-                color            = MaterialTheme.colorScheme.primary,
-                trackColor       = MaterialTheme.colorScheme.surfaceVariant
+                modifier   = Modifier.fillMaxWidth().height(2.dp),
+                color      = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
         }
     }
