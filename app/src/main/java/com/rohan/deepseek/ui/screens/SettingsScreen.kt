@@ -54,6 +54,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -76,12 +77,13 @@ fun SettingsScreen(vm: AppViewModel) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(Color(0xFF060D1F))
     ) {
         TopAppBar(
             title  = { Text("Settings") },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.background
+                containerColor = Color(0xFF060D1F),
+                titleContentColor = Color.White
             )
         )
 
@@ -166,7 +168,7 @@ private fun CacheSummaryCard(
             .fillMaxWidth()
             .animateContentSize(),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant
+            containerColor = Color(0xFF0D1E3D)
         )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
@@ -226,7 +228,7 @@ private fun CacheSummaryCard(
 private fun CacheItem(entry: CacheEntry, onDelete: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors   = CardDefaults.cardColors(containerColor = Color(0xFF091628))
     ) {
         Row(
             modifier          = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),

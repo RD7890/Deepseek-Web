@@ -28,9 +28,11 @@ class CacheManager(context: Context) {
         }
     }
 
+    // Only cache static assets — images, icons, fonts, CSS.
+    // JS is intentionally excluded so AI responses always hit the network.
     private val cacheableExtensions = setOf(
         "png", "jpg", "jpeg", "gif", "webp", "svg", "ico",
-        "woff", "woff2", "ttf", "otf", "css", "js"
+        "woff", "woff2", "ttf", "otf", "css"
     )
 
     fun intercept(request: WebResourceRequest): WebResourceResponse? {
@@ -98,7 +100,6 @@ class CacheManager(context: Context) {
         val ext = url.substringAfterLast('.').substringBefore('?').lowercase()
         return when (ext) {
             "css"        -> "text/css"
-            "js"         -> "application/javascript"
             "png"        -> "image/png"
             "jpg","jpeg" -> "image/jpeg"
             "gif"        -> "image/gif"
